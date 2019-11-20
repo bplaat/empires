@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 typedef struct DrsFile {
+    FILE *file;
     uint32_t id;
     uint32_t offset;
     uint32_t size;

@@ -12,6 +12,7 @@ typedef enum DrsTableType {
 } DrsTableType;
 
 typedef struct DrsTable {
+    FILE *file;
     DrsTableType type;
     uint32_t file_count;
     DrsFile **files;
@@ -19,7 +20,7 @@ typedef struct DrsTable {
 
 DrsTable *drs_table_load(FILE *file);
 
-DrsFile *drs_table_find_file(DrsTable *drs_table, uint32_t file_id);
+DrsFile *drs_table_get_file(DrsTable *drs_table, uint32_t file_id);
 
 void drs_table_free(DrsTable *drs_table);
 

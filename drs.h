@@ -13,7 +13,7 @@ typedef struct Drs {
 
 Drs *drs_load(char *path);
 
-DrsTable *drs_find_table(Drs *drs, DrsTableType table_type);
+DrsTable *drs_get_table(Drs *drs, DrsTableType table_type);
 
 void drs_free(Drs *drs);
 

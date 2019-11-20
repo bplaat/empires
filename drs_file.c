@@ -5,6 +5,7 @@
 
 DrsFile *drs_file_load(FILE *file) {
     DrsFile *drs_file = malloc(sizeof(DrsFile));
+    drs_file->file = file;
     fread(&drs_file->id, sizeof(uint32_t), 1, file);
     fread(&drs_file->offset, sizeof(uint32_t), 1, file);
     fread(&drs_file->size, sizeof(uint32_t), 1, file);

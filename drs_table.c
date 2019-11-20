@@ -6,6 +6,7 @@
 
 DrsTable *drs_table_load(FILE *file) {
     DrsTable *drs_table = malloc(sizeof(DrsTable));
+    drs_table->file = file;
 
     uint32_t drs_table_type;
     fread(&drs_table_type, sizeof(uint32_t), 1, file);
@@ -37,7 +38,7 @@ DrsTable *drs_table_load(FILE *file) {
     return drs_table;
 }
 
-DrsFile *drs_table_find_file(DrsTable *drs_table, uint32_t file_id) {
+DrsFile *drs_table_get_file(DrsTable *drs_table, uint32_t file_id) {
     for (uint32_t i = 0; i < drs_table->file_count; i++) {
        if (drs_table->files[i]->id == file_id) {
            return drs_table->files[i];

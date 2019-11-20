@@ -2,13 +2,44 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include "empires.h"
 #include "drs.h"
 #include "drs_table.h"
 #include "drs_file.h"
 #include "utils.h"
+#include "frame_buffer.h"
+#include "pallet.h"
+#include "slp.h"
 
-#define WINDOW_WIDTH 1280
-#define WINDOW_HEIGHT 720
+bool running = true;
+Pallet *pallet;
+Slp *slp1;
+Slp *slp2;
+
+void render(FrameBuffer *frame_buffer) {
+    for (uint32_t y = 0; y < WINDOW_HEIGHT; y++) {
+        for (uint32_t x = 0; x < WINDOW_WIDTH; x++) {
+            frame_buffer_set_pixel(frame_buffer, x, y, 0x0023ef45);
+        }
+    }
+
+    uint32_t x = 0, y = 0;
+    for (uint32_t i = 0; i < 256; i++) {
+        frame_buffer_fill_rect(frame_buffer, x * 10, y * 10, 10, 10, pallet->colors[i]);
+        if (x == 16 - 1) {
+            x = 0;
+            y++;
+        } else {
+            x++;
+        }
+    }
+
+    slp_frame_draw(slp1->frames[0], pallet, frame_buffer, 200, 100);
+    slp_frame_draw(slp2->frames[0], pallet, frame_buffer, 700, 300);
+
+    frame_buffer_render(frame_buffer);
+}
 
 int main(int argc, char **argv) {
     if (argc == 1) {
@@ -21,44 +52,40 @@ int main(int argc, char **argv) {
     Drs *interfac_drs = drs_load(interfac_path);
     free(interfac_path);
 
-    printf("Drs: %d\n", interfac_drs->table_count);
-    for (uint32_t i = 0; i < interfac_drs->table_count; i++) {
-        DrsTable *drs_table = interfac_drs->tables[i];
-        printf("Table: %d - %d\n", drs_table->type, drs_table->file_count);
-        for (uint32_t j = 0; j < drs_table->file_count; j++) {
-            DrsFile *drs_file = drs_table->files[j];
-            printf("File: %d - %d\n", drs_file->id, drs_file->size);
-        }
-        putchar('\n');
-    }
+    DrsTable *bin_table = drs_get_table(interfac_drs, DRS_TABLE_TYPE_BIN);
+    pallet = pallet_load(drs_table_get_file(bin_table, 50500));
+
+    char *graphics_path = string_concat(game_dir, "/DATA/graphics.drs");
+    Drs *graphics_drs = drs_load(graphics_path);
+    free(graphics_path);
+
+    DrsTable *slp_table = drs_get_table(graphics_drs, DRS_TABLE_TYPE_SLP);
+    slp1 = slp_load(drs_table_get_file(slp_table, 24));
+    slp2 = slp_load(drs_table_get_file(slp_table, 133));
 
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Window *window = SDL_CreateWindow("Age of Empires II", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
+    SDL_Window *window = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    SDL_Texture *framebuffer = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, WINDOW_WIDTH, WINDOW_HEIGHT);
-    uint32_t *pixels = malloc(WINDOW_HEIGHT * WINDOW_WIDTH * sizeof(uint32_t));
+    FrameBuffer *frame_buffer = frame_buffer_new(renderer, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    // Set first pixel to red
-    pixels[0] = 255;
-
-    for (;;) {
+    while (running) {
         SDL_Event event;
-        if (SDL_PollEvent(&event)) {
+        while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
-                break;
+                running = false;
             }
         }
-        SDL_UpdateTexture(framebuffer, NULL, pixels, WINDOW_WIDTH * sizeof(uint32_t));
-        SDL_RenderClear(renderer);
-        SDL_RenderCopy(renderer, framebuffer, NULL, NULL);
-        SDL_RenderPresent(renderer);
+
+        render(frame_buffer);
     }
 
+    slp_free(slp1);
+    slp_free(slp2);
+    pallet_free(pallet);
+    drs_free(graphics_drs);
     drs_free(interfac_drs);
 
-    free(pixels);
-    SDL_DestroyTexture(framebuffer);
-    SDL_DestroyRenderer(renderer);
+    frame_buffer_free(frame_buffer);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return EXIT_SUCCESS;

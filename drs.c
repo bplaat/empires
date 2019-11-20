@@ -21,7 +21,7 @@ Drs *drs_load(char *path) {
     return drs;
 }
 
-DrsTable *drs_find_table(Drs *drs, DrsTableType table_type) {
+DrsTable *drs_get_table(Drs *drs, DrsTableType table_type) {
     for (uint32_t i = 0; i < drs->table_count; i++) {
        if (drs->tables[i]->type == table_type) {
            return drs->tables[i];
