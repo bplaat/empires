@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
     DRS *drs = drs_new_from_file(drs_path);
 
     // Window
-    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
 
     SDL_Window *window = SDL_CreateWindow("DRS Viewer",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, framebuffer_width, framebuffer_height, SDL_WINDOW_RESIZABLE);
@@ -80,6 +80,7 @@ int main(int argc, char **argv) {
     int32_t selected_id;
     size_t selected_size;
     void *selected_data = NULL;
+    int32_t selected_frame;
 
     while (!running) {
         SDL_Event event;
@@ -95,11 +96,41 @@ int main(int argc, char **argv) {
                             selected_ext = table->header.extension;
                             selected_id = file->id;
                             selected_data = drs_read_file(drs, selected_ext, file->id, &selected_size);
+
+                            selected_frame = 0;
+
+                            if (selected_ext == DRS_TABLE_WAV) {
+                                FILE *f = fopen("tmp.wav", "wb");
+                                fwrite(selected_data, selected_size, 1, f);
+                                fclose(f);
+
+                                SDL_AudioSpec wavSpec;
+                                uint8_t *wavBuffer;
+                                uint32_t wavLength;
+                                SDL_LoadWAV("tmp.wav", &wavSpec, &wavBuffer, &wavLength);
+                                SDL_AudioDeviceID deviceId = SDL_OpenAudioDevice(NULL, 0, &wavSpec, NULL, 0);
+                                SDL_QueueAudio(deviceId, wavBuffer, wavLength);
+                                SDL_PauseAudioDevice(deviceId, 0);
+
+                                // TODO releasing SDL audio stuff
+                                // SDL_CloseAudioDevice(deviceId);
+                                // SDL_FreeWAV(wavBuffer);
+                            }
                             break;
                         }
                         y += 12;
                     }
                     y += 12;
+                }
+
+                if (event.button.x >= 300 && selected_ext == DRS_TABLE_SLP) {
+                    if (selected_ext == DRS_TABLE_SLP) {
+                        slp_header *slp = (slp_header *)selected_data;
+                        selected_frame++;
+                        if (selected_frame == slp->frame_count) {
+                            selected_frame = 0;
+                        }
+                    }
                 }
                 break;
             }
@@ -137,9 +168,9 @@ int main(int argc, char **argv) {
         }
 
         // Draw sidebar
-        framebuffer_fill_rect(framebuffer, 0, 0, 300, framebuffer_height, 0xeeeeee);
+        framebuffer_fill_rect(framebuffer, 0, 0, 299, framebuffer_height, 0xeeeeee);
         for (int32_t ry = 0; ry < framebuffer_height; ry++) {
-            framebuffer[ry * framebuffer_width + 300] = 0x000000;
+            framebuffer[ry * framebuffer_width + 299] = 0x000000;
         }
 
         // Draw items
@@ -183,7 +214,11 @@ int main(int argc, char **argv) {
                 }
             }
             else if (selected_ext == DRS_TABLE_SLP) {
-                slp_frame *frame = (slp_frame *)((uint8_t *)selected_data + sizeof(slp_header));
+                slp_header *slp = (slp_header *)selected_data;
+                sprintf(line, "SLP Frame %d / %d", selected_frame + 1, slp->frame_count);
+                framebuffer_draw_text(framebuffer, 308, 8, line, strlen(line),0x000000);
+
+                slp_frame *frame = (slp_frame *)((uint8_t *)selected_data + sizeof(slp_header) + selected_frame * (sizeof(slp_frame)));
                 uint8_t *bitmap = slp_frame_to_bitmap(selected_data, frame);
                 for (int32_t ry = 0; ry < frame->height; ry++) {
                     for (int32_t rx = 0; rx < frame->width; rx++) {
@@ -194,6 +229,10 @@ int main(int argc, char **argv) {
                     }
                 }
                 free(bitmap);
+            }
+            else if (selected_ext == DRS_TABLE_WAV) {
+                char *text = "You can hear the WAV sound playing!";
+                framebuffer_draw_text(framebuffer, 308, 8, text, strlen(text),0x000000);
             }
             else {
                 char *text = "Can't view this file type!";
