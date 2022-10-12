@@ -1,92 +1,150 @@
-#include "SDL.h"
+// An Age of Empires I demo thingy
+// gcc -Wall -Wextra -Wshadow -Wpedantic --std=c11 empires.c $(pkg-config --cflags --libs sdl2) -o empires && ./empires
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <SDL.h>
+#define EMPIRES_DEFINE
 #include "empires.h"
-#include "drs.h"
-#include "drs_table.h"
-#include "drs_file.h"
-#include "utils.h"
-#include "frame_buffer.h"
-#include "pallet.h"
-#include "slp.h"
 
-bool running = true;
-Pallet *pallet;
-Slp *slp1;
-Slp *slp2;
+int main(void) {
+    char *root_path = "/Users/bplaat/Software/Age of Empires";
 
-void render(FrameBuffer *frame_buffer) {
-    for (uint32_t y = 0; y < WINDOW_HEIGHT; y++) {
-        for (uint32_t x = 0; x < WINDOW_WIDTH; x++) {
-            frame_buffer_set_pixel(frame_buffer, x, y, 0x0023ef45);
-        }
-    }
+    // Interfac.drs
+    char interface_path[255];
+    strcpy(interface_path, root_path);
+    strcat(interface_path, "/data/Interfac.drs");
+    DRS *interface_drs = drs_new_from_file(interface_path);
 
-    uint32_t x = 0, y = 0;
-    for (uint32_t i = 0; i < 256; i++) {
-        frame_buffer_fill_rect(frame_buffer, x * 10, y * 10, 10, 10, pallet->colors[i]);
-        if (x == 16 - 1) {
-            x = 0;
-            y++;
-        } else {
-            x++;
-        }
-    }
+    // Graphics.drs
+    char graphics_path[255];
+    strcpy(graphics_path, root_path);
+    strcat(graphics_path, "/data/graphics.drs");
+    DRS *graphics_drs = drs_new_from_file(graphics_path);
 
-    slp_frame_draw(slp1->frames[0], pallet, frame_buffer, 200, 100);
-    slp_frame_draw(slp2->frames[0], pallet, frame_buffer, 700, 300);
+    // Terrain.drs
+    char terrain_path[255];
+    strcpy(terrain_path, root_path);
+    strcat(terrain_path, "/data/terrain.drs");
+    DRS *terrain_drs = drs_new_from_file(terrain_path);
 
-    frame_buffer_render(frame_buffer);
-}
+    // Pallet
+    char *palette_text = drs_read_file(interface_drs, DRS_TABLE_BIN, 50500, NULL);
+    uint32_t *palette = palette_parse(palette_text);
+    free(palette_text);
 
-int main(int argc, char **argv) {
-    if (argc == 1) {
-        return EXIT_FAILURE;
-    }
+    // Terrain SLP
+    // 0 sand 1 grass 1 water 2 deep water
+    void *grass = drs_read_file(terrain_drs, DRS_TABLE_SLP, 15000, NULL);
+    slp_frame *grass_frame = (slp_frame *)((uint8_t *)grass + sizeof(slp_header));
+    uint8_t *grass_bitmap = slp_frame_to_bitmap(grass, grass_frame);
 
-    char *game_dir = argv[1];
+    // SLP
+    void *barracks = drs_read_file(graphics_drs, DRS_TABLE_SLP, 17, NULL);
+    slp_frame *barracks_frame = (slp_frame *)((uint8_t *)barracks + sizeof(slp_header));
+    uint8_t *barracks_bitmap = slp_frame_to_bitmap(barracks, barracks_frame);
 
-    char *interfac_path = string_concat(game_dir, "/DATA/interfac.drs");
-    Drs *interfac_drs = drs_load(interfac_path);
-    free(interfac_path);
+    void *town_center = drs_read_file(graphics_drs, DRS_TABLE_SLP, 18, NULL);
+    slp_frame *town_center_frame = (slp_frame *)((uint8_t *)town_center + sizeof(slp_header));
+    uint8_t *town_center_bitmap = slp_frame_to_bitmap(town_center, town_center_frame);
 
-    DrsTable *bin_table = drs_get_table(interfac_drs, DRS_TABLE_TYPE_BIN);
-    pallet = pallet_load(drs_table_get_file(bin_table, 50500));
+    void *tree = drs_read_file(graphics_drs, DRS_TABLE_SLP, 503, NULL);
+    slp_frame *tree_frame = (slp_frame *)((uint8_t *)tree + sizeof(slp_header));
+    uint8_t *tree_bitmap = slp_frame_to_bitmap(tree, tree_frame);
 
-    char *graphics_path = string_concat(game_dir, "/DATA/graphics.drs");
-    Drs *graphics_drs = drs_load(graphics_path);
-    free(graphics_path);
-
-    DrsTable *slp_table = drs_get_table(graphics_drs, DRS_TABLE_TYPE_SLP);
-    slp1 = slp_load(drs_table_get_file(slp_table, 24));
-    slp2 = slp_load(drs_table_get_file(slp_table, 133));
-
+    // Window
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Window *window = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    FrameBuffer *frame_buffer = frame_buffer_new(renderer, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    while (running) {
+    int32_t window_width = 1280;
+    int32_t window_height = 720;
+
+    SDL_Window *window = SDL_CreateWindow("Age of Empires",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height, 0);
+
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    SDL_Texture *texture = SDL_CreateTexture(renderer,
+        SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, window_width, window_height);
+
+    bool running = false;
+    while (!running) {
         SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
-                running = false;
+        SDL_PollEvent(&event);
+
+        if (event.type == SDL_QUIT) {
+            running = true;
+            break;
+        }
+
+        uint32_t *framebuffer;
+        int32_t pitch;
+        SDL_LockTexture(texture, NULL, (void **)&framebuffer, &pitch);
+
+        for (int32_t y = 0; y < window_height; y++) {
+            for (int32_t x = 0; x < window_width; x++) {
+                framebuffer[y * window_width + x] = 0xffffff;
             }
         }
 
-        render(frame_buffer);
+        for (int32_t y = 0; y < barracks_frame->height; y++) {
+            for (int32_t x = 0; x < barracks_frame->width; x++) {
+                uint32_t color = palette[barracks_bitmap[y * barracks_frame->width + x]];
+                if (color != 0) {
+                    framebuffer[(y + 100) * window_width + (x + 100)] = color;
+                }
+            }
+        }
+
+        for (int32_t y = 0; y < town_center_frame->height; y++) {
+            for (int32_t x = 0; x < town_center_frame->width; x++) {
+                uint32_t color = palette[town_center_bitmap[y * town_center_frame->width + x]];
+                if (color != 0) {
+                    framebuffer[(y + 100) * window_width + (x + 300)] = color;
+                }
+            }
+        }
+
+        int32_t oy = 0;
+        for (int32_t ry = 0; ry < 10; ry++) {
+            int32_t ox = 0;
+            for (int32_t rx = 0; rx < 30; rx++) {
+                ox += grass_frame->width / 2 - 1;
+
+                for (int32_t y = 0; y < grass_frame->height; y++) {
+                    for (int32_t x = 0; x < grass_frame->width; x++) {
+
+                        uint32_t color = grass_bitmap[y * grass_frame->width + x];
+                        if (color != 0) {
+                            framebuffer[(y + 300 + oy + (rx % 2 ? grass_frame->height / 2 : 0)) * window_width + (x + 100 + ox)] = palette[color];
+                        }
+                    }
+                }
+            }
+            oy += grass_frame->height;
+        }
+
+        for (int32_t y = 0; y < tree_frame->height; y++) {
+            for (int32_t x = 0; x < tree_frame->width; x++) {
+                uint32_t color = tree_bitmap[y * tree_frame->width + x];
+                if (color != 0) {
+                    framebuffer[(y + 400) * window_width + (x + 400)] = palette[color];
+                }
+            }
+        }
+
+        SDL_UnlockTexture(texture);
+
+        SDL_RenderClear(renderer);
+        SDL_RenderCopy(renderer, texture, NULL, NULL);
+        SDL_RenderPresent(renderer);
     }
 
-    slp_free(slp1);
-    slp_free(slp2);
-    pallet_free(pallet);
     drs_free(graphics_drs);
-    drs_free(interfac_drs);
+    drs_free(interface_drs);
 
-    frame_buffer_free(frame_buffer);
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-    return EXIT_SUCCESS;
+    return 0;
 }

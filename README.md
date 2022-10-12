@@ -1,2 +1,2 @@
-# openage sucks
-My attempt to make something that looks like Age of Empires II
+# bplaat/empires
+Some tools and demo's to view game data of Age of Empires I
