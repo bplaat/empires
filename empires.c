@@ -7,6 +7,14 @@
 #include <SDL.h>
 #define EMPIRES_DEFINE
 #include "empires.h"
+#define FRAMEBUFFER_DEFINE
+#include "framebuffer.h"
+
+typedef struct Object {
+    int32_t id;
+    int32_t x;
+    int32_t y;
+} Object;
 
 int main(void) {
     char *root_path = "/Users/bplaat/Software/Age of Empires";
@@ -31,119 +39,116 @@ int main(void) {
 
     // Pallet
     char *palette_text = drs_read_file(interface_drs, DRS_TABLE_BIN, 50500, NULL);
-    uint32_t *palette = palette_parse(palette_text);
+    Palette *palette = palette_new_from_text(palette_text);
     free(palette_text);
 
-    // Terrain SLP
+    // Load terrain SLP's
     // 0 sand 1 grass 1 water 2 deep water
-    void *grass = drs_read_file(terrain_drs, DRS_TABLE_SLP, 15000, NULL);
-    slp_frame *grass_frame = (slp_frame *)((uint8_t *)grass + sizeof(slp_header));
-    uint8_t *grass_bitmap = slp_frame_to_bitmap(grass, grass_frame);
+    slp_header *terrain_slps[4];
+    for (int32_t i = 0; i < 4; i++) {
+        terrain_slps[i] = drs_read_file(terrain_drs, DRS_TABLE_SLP, 15000 + i, NULL);
+    }
 
-    // SLP
-    void *barracks = drs_read_file(graphics_drs, DRS_TABLE_SLP, 17, NULL);
-    slp_frame *barracks_frame = (slp_frame *)((uint8_t *)barracks + sizeof(slp_header));
-    uint8_t *barracks_bitmap = slp_frame_to_bitmap(barracks, barracks_frame);
-
-    void *town_center = drs_read_file(graphics_drs, DRS_TABLE_SLP, 18, NULL);
-    slp_frame *town_center_frame = (slp_frame *)((uint8_t *)town_center + sizeof(slp_header));
-    uint8_t *town_center_bitmap = slp_frame_to_bitmap(town_center, town_center_frame);
-
-    void *tree = drs_read_file(graphics_drs, DRS_TABLE_SLP, 503, NULL);
-    slp_frame *tree_frame = (slp_frame *)((uint8_t *)tree + sizeof(slp_header));
-    uint8_t *tree_bitmap = slp_frame_to_bitmap(tree, tree_frame);
+    // Load unit SLP's
+    slp_header *unit_slps[716];
+    for (int32_t i = 0; i < 716; i++) {
+        unit_slps[i] = drs_read_file(graphics_drs, DRS_TABLE_SLP, i, NULL);
+    }
 
     // Window
     SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window *window = SDL_CreateWindow("Age of Empires", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_RESIZABLE);
+    Framebuffer *framebuffer = framebuffer_new(window);
 
-    int32_t window_width = 1280;
-    int32_t window_height = 720;
+    // State
+    int32_t map_width = 16;
+    int32_t map_height = 16;
 
-    SDL_Window *window = SDL_CreateWindow("Age of Empires",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height, 0);
+    uint8_t map[map_height * map_width];
+    memset(map, 0, map_height * map_width);
+    for (int32_t i = 0; i < 10; i++) {
+        map[2 + i] = 1;
+    }
+    for (int32_t i = 0; i < map_width; i++) {
+        map[i * map_width + 0] = 3;
+    }
+    for (int32_t i = 0; i < map_width; i++) {
+        map[i * map_width + 1] = 2;
+    }
 
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    SDL_Texture *texture = SDL_CreateTexture(renderer,
-        SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, window_width, window_height);
+    size_t objects_size = 2;
+    Object objects[100];
+    objects[0] = (Object){
+        .id = 503,
+        .x = 5,
+        .y = 5
+    };
+    objects[1] = (Object){
+        .id = 19,
+        .x = 5,
+        .y = 1
+    };
 
+    // Event loop
     bool running = false;
     while (!running) {
         SDL_Event event;
-        SDL_PollEvent(&event);
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                framebuffer_resize(framebuffer);
+                break;
+            }
 
-        if (event.type == SDL_QUIT) {
-            running = true;
-            break;
-        }
-
-        uint32_t *framebuffer;
-        int32_t pitch;
-        SDL_LockTexture(texture, NULL, (void **)&framebuffer, &pitch);
-
-        for (int32_t y = 0; y < window_height; y++) {
-            for (int32_t x = 0; x < window_width; x++) {
-                framebuffer[y * window_width + x] = 0xffffff;
+            if (event.type == SDL_QUIT) {
+                running = true;
+                break;
             }
         }
 
-        for (int32_t y = 0; y < barracks_frame->height; y++) {
-            for (int32_t x = 0; x < barracks_frame->width; x++) {
-                uint32_t color = palette[barracks_bitmap[y * barracks_frame->width + x]];
-                if (color != 0) {
-                    framebuffer[(y + 100) * window_width + (x + 100)] = color;
-                }
+        framebuffer_begin(framebuffer);
+        framebuffer_clear(framebuffer, 0x000000);
+
+        int32_t start_x = framebuffer->width / 2;
+        int32_t start_y = 50;
+
+        int32_t terrain_width = ((slp_frame *)((uint8_t *)terrain_slps[0] + sizeof(slp_header)))->width;
+        int32_t terrain_hwidth = terrain_width / 2;
+        int32_t terrain_height = ((slp_frame *)((uint8_t *)terrain_slps[0] + sizeof(slp_header)))->height;
+        int32_t terrain_hheight = terrain_height / 2;
+
+        // Draw map
+        for (int32_t ry = 0; ry < map_height; ry++) {
+            for (int32_t rx = 0; rx < map_width; rx++) {
+                slp_header *slp = terrain_slps[map[ry * map_width + rx]];
+                slp_frame *frame = (slp_frame *)((uint8_t *)slp + sizeof(slp_header));
+
+                framebuffer_draw_slp(framebuffer, slp, frame,
+                    start_x - terrain_hwidth + rx * terrain_hwidth - ry * terrain_hwidth,
+                    start_y + rx * terrain_hheight + ry * terrain_hheight,
+                    palette);
             }
         }
 
-        for (int32_t y = 0; y < town_center_frame->height; y++) {
-            for (int32_t x = 0; x < town_center_frame->width; x++) {
-                uint32_t color = palette[town_center_bitmap[y * town_center_frame->width + x]];
-                if (color != 0) {
-                    framebuffer[(y + 100) * window_width + (x + 300)] = color;
-                }
-            }
+        // Draw objects
+        for (size_t i = 0; i < objects_size; i++) {
+            Object *object = &objects[i];
+            slp_header *slp = unit_slps[object->id];
+            slp_frame *frame = (slp_frame *)((uint8_t *)slp + sizeof(slp_header));
+            framebuffer_draw_slp(framebuffer, slp, frame,
+                start_x - frame->center_x + object->x  * terrain_hwidth - object->y * terrain_hwidth,
+                start_y - frame->center_y + terrain_hheight + object->x * terrain_hheight + object->y * terrain_hheight,
+                palette);
         }
 
-        int32_t oy = 0;
-        for (int32_t ry = 0; ry < 10; ry++) {
-            int32_t ox = 0;
-            for (int32_t rx = 0; rx < 30; rx++) {
-                ox += grass_frame->width / 2 - 1;
-
-                for (int32_t y = 0; y < grass_frame->height; y++) {
-                    for (int32_t x = 0; x < grass_frame->width; x++) {
-
-                        uint32_t color = grass_bitmap[y * grass_frame->width + x];
-                        if (color != 0) {
-                            framebuffer[(y + 300 + oy + (rx % 2 ? grass_frame->height / 2 : 0)) * window_width + (x + 100 + ox)] = palette[color];
-                        }
-                    }
-                }
-            }
-            oy += grass_frame->height;
-        }
-
-        for (int32_t y = 0; y < tree_frame->height; y++) {
-            for (int32_t x = 0; x < tree_frame->width; x++) {
-                uint32_t color = tree_bitmap[y * tree_frame->width + x];
-                if (color != 0) {
-                    framebuffer[(y + 400) * window_width + (x + 400)] = palette[color];
-                }
-            }
-        }
-
-        SDL_UnlockTexture(texture);
-
-        SDL_RenderClear(renderer);
-        SDL_RenderCopy(renderer, texture, NULL, NULL);
-        SDL_RenderPresent(renderer);
+        framebuffer_end(framebuffer);
+        framebuffer_present(framebuffer);
     }
 
+    palette_free(palette);
     drs_free(graphics_drs);
     drs_free(interface_drs);
 
-    SDL_DestroyTexture(texture);
-    SDL_DestroyRenderer(renderer);
+    framebuffer_free(framebuffer);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
