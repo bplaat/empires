@@ -30,6 +30,8 @@ void framebuffer_free(Framebuffer *framebuffer);
 
 void framebuffer_draw_pixel(Framebuffer *framebuffer, int32_t x, int32_t y, uint32_t color);
 
+void framebuffer_clear(Framebuffer *framebuffer, uint32_t color);
+
 void framebuffer_fill_rect(Framebuffer *framebuffer, int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color);
 
 void framebuffer_draw_text(Framebuffer *framebuffer, int32_t x, int32_t y, char *string, size_t size, uint32_t color);
@@ -79,6 +81,12 @@ void framebuffer_free(Framebuffer *framebuffer) {
 void framebuffer_draw_pixel(Framebuffer *framebuffer, int32_t x, int32_t y, uint32_t color) {
     if (x >= 0 && y >= 0 && x < framebuffer->width && y < framebuffer->height) {
         framebuffer->ptr[y * framebuffer->width + x] = color;
+    }
+}
+
+void framebuffer_clear(Framebuffer *framebuffer, uint32_t color) {
+    for (int32_t i = 0; i < framebuffer->height * framebuffer->width; i++) {
+        framebuffer->ptr[i] = color;
     }
 }
 

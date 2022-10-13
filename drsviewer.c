@@ -122,11 +122,7 @@ int main(int argc, char **argv) {
         framebuffer_begin(framebuffer);
 
         // Draw background
-        for (int32_t y = 0; y < framebuffer->height; y++) {
-            for (int32_t x = 0; x < framebuffer->width; x++) {
-                framebuffer_draw_pixel(framebuffer, x, y, 0xffffff);
-            }
-        }
+        framebuffer_clear(framebuffer, 0xffffff);
 
         // Draw sidebar
         framebuffer_fill_rect(framebuffer, 0, 0, 299, framebuffer->height, 0xeeeeee);
@@ -169,6 +165,19 @@ int main(int argc, char **argv) {
                     if (*c == '\r') c++;
                     c++;
                     text_y += 12;
+                }
+
+                char *paletteFirstline = "JASC-PAL\n";
+                if (memcmp(selected.ptr, paletteFirstline, strlen(paletteFirstline))) {
+                    Palette *palette = palette_new_from_text(selected.ptr);
+                    int32_t columns = 16;
+                    for (int32_t y = 0; y < (int32_t)palette->size / columns; y++) {
+                        for (int32_t x = 0; x < columns; x++) {
+                            framebuffer_fill_rect(framebuffer, framebuffer->width - 8 - columns * 16 + x * 16, 8 + y * 16, 16, 16, palette->colors[y * columns + x]);
+                        }
+                    }
+
+                    palette_free(palette);
                 }
             }
             else if (selected.extension == DRS_TABLE_SLP) {
