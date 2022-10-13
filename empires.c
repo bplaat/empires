@@ -43,7 +43,7 @@ int main(void) {
     free(palette_text);
 
     // Load terrain SLP's
-    // 0 sand 1 grass 1 water 2 deep water
+    // 0 sand, 1 grass, 1 water, 2 deep water
     slp_header *terrain_slps[4];
     for (int32_t i = 0; i < 4; i++) {
         terrain_slps[i] = drs_read_file(terrain_drs, DRS_TABLE_SLP, 15000 + i, NULL);
@@ -61,9 +61,11 @@ int main(void) {
     Framebuffer *framebuffer = framebuffer_new(window);
 
     // State
-    int32_t map_width = 16;
-    int32_t map_height = 16;
+    int32_t camera_x = 0;
+    int32_t camera_y = 0;
 
+    int32_t map_width = 32;
+    int32_t map_height = 32;
     uint8_t map[map_height * map_width];
     memset(map, 0, map_height * map_width);
     for (int32_t i = 0; i < 10; i++) {
@@ -76,8 +78,10 @@ int main(void) {
         map[i * map_width + 1] = 2;
     }
 
-    size_t objects_size = 2;
+    size_t objects_size = 5;
     Object objects[100];
+
+    // Buildings
     objects[0] = (Object){
         .id = 503,
         .x = 5,
@@ -88,12 +92,47 @@ int main(void) {
         .x = 5,
         .y = 1
     };
+    objects[2] = (Object){
+        .id = 447,
+        .x = 12,
+        .y = 5
+    };
+    objects[3] = (Object){
+        .id = 117,
+        .x = 6,
+        .y = 10
+    };
+
+    // Unit
+    objects[4] = (Object){
+        .id = 442,
+        .x = 15,
+        .y = 15
+    };
+
+    bool mouse_down = false;
 
     // Event loop
     bool running = false;
     while (!running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_MOUSEBUTTONDOWN) {
+                mouse_down = true;
+                break;
+            }
+            if (event.type == SDL_MOUSEMOTION) {
+                if (mouse_down) {
+                    camera_x += event.motion.xrel;
+                    camera_y += event.motion.yrel;
+                }
+                break;
+            }
+            if (event.type == SDL_MOUSEBUTTONUP) {
+                mouse_down = false;
+                break;
+            }
+
             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
                 framebuffer_resize(framebuffer);
                 break;
@@ -108,8 +147,8 @@ int main(void) {
         framebuffer_begin(framebuffer);
         framebuffer_clear(framebuffer, 0x000000);
 
-        int32_t start_x = framebuffer->width / 2;
-        int32_t start_y = 50;
+        int32_t start_x = camera_x + framebuffer->width / 2;
+        int32_t start_y = camera_y + 50;
 
         int32_t terrain_width = ((slp_frame *)((uint8_t *)terrain_slps[0] + sizeof(slp_header)))->width;
         int32_t terrain_hwidth = terrain_width / 2;
@@ -117,15 +156,22 @@ int main(void) {
         int32_t terrain_hheight = terrain_height / 2;
 
         // Draw map
-        for (int32_t ry = 0; ry < map_height; ry++) {
-            for (int32_t rx = 0; rx < map_width; rx++) {
-                slp_header *slp = terrain_slps[map[ry * map_width + rx]];
+        for (int32_t y = 0; y < map_height; y++) {
+            for (int32_t x = 0; x < map_width; x++) {
+                slp_header *slp = terrain_slps[map[y * map_width + x]];
                 slp_frame *frame = (slp_frame *)((uint8_t *)slp + sizeof(slp_header));
 
                 framebuffer_draw_slp(framebuffer, slp, frame,
-                    start_x - terrain_hwidth + rx * terrain_hwidth - ry * terrain_hwidth,
-                    start_y + rx * terrain_hheight + ry * terrain_hheight,
+                    start_x - terrain_hwidth + x * terrain_hwidth - y * terrain_hwidth,
+                    start_y + x * terrain_hheight + y * terrain_hheight,
                     palette);
+
+                char line[256];
+                sprintf(line, "%dx%d", x, y);
+                    framebuffer_draw_text(framebuffer,
+                    start_x - terrain_hwidth / 2 + x * terrain_hwidth - y * terrain_hwidth,
+                    start_y + terrain_hheight + x * terrain_hheight + y * terrain_hheight,
+                    line, strlen(line), 0xffffff);
             }
         }
 
@@ -139,6 +185,16 @@ int main(void) {
                 start_y - frame->center_y + terrain_hheight + object->x * terrain_hheight + object->y * terrain_hheight,
                 palette);
         }
+
+        // Draw Info
+        char info[256];
+        int32_t info_y = 8;
+        sprintf(info, "Bassie Age of Empires Demo");
+        framebuffer_draw_text(framebuffer, 8, info_y, info, strlen(info), 0xffffff);
+        info_y += 12;
+
+        sprintf(info, "Map size: %dx%d", map_width, map_height);
+        framebuffer_draw_text(framebuffer, 8, info_y, info, strlen(info), 0xffffff);
 
         framebuffer_end(framebuffer);
         framebuffer_present(framebuffer);
