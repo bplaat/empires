@@ -1,11 +1,11 @@
 // Simple library when functions to decode and work with Age of Empires GENIE Engine files
-#ifndef EMPIRES_H
-#define EMPIRES_H
+#ifndef EMPIRES_HEADER
+#define EMPIRES_HEADER
 
-// ############################################# Header #############################################
 #include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "framebuffer.h"
 
 // DRS
 typedef struct drs_header {
@@ -51,7 +51,14 @@ void *drs_read_file(DRS *drs, uint32_t type, int32_t id, size_t *size);
 void drs_free(DRS *drs);
 
 // Palette
-uint32_t *palette_parser(char *palette_text);
+typedef struct Palette {
+    size_t size;
+    uint32_t *colors;
+} Palette;
+
+Palette *palette_new_from_text(char *text);
+
+void palette_free(Palette *palette);
 
 // SLP
 typedef struct slp_header {
@@ -76,10 +83,12 @@ typedef struct slp_outline_row {
     uint16_t right;
 } slp_outline_row;
 
-uint8_t *slp_frame_to_bitmap(void *slp, slp_frame *frame);
+void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *frame, int32_t rx, int32_t ry, Palette * palette);
 
-// ############################################# Implementation #############################################
-#ifdef EMPIRES_DEFINE
+#endif
+
+#if defined(EMPIRES_DEFINE) && !defined(EMPIRES_IMPLEMENTATION)
+#define EMPIRES_IMPLEMENTATION
 
 #include <stdlib.h>
 #include <string.h>
@@ -139,58 +148,61 @@ void drs_free(DRS *drs) {
 }
 
 // Palette
-uint32_t *palette_parse(char *palette_text) {
-    char *c = palette_text;
+Palette *palette_new_from_text(char *text) {
+    Palette *palette = malloc(sizeof(Palette));
+    char *c = text;
     for (int32_t i = 0; i < 2; i++) {
         while (*c != '\n') c++;
         c++;
     }
-    uint32_t length = strtod(c, &c);
+    palette->size = strtod(c, &c);
     c++;
-    uint32_t *palette = malloc(length * sizeof(uint32_t));
-    for (int32_t i = 0; i < 256; i++) {
+    palette->colors = malloc(palette->size * sizeof(uint32_t));
+    for (size_t i = 0; i < palette->size; i++) {
         uint8_t red = strtod(c, &c);
         c++;
         uint8_t green = strtod(c, &c);
         c++;
         uint8_t blue = strtod(c, &c);
         c++;
-        palette[i] = (blue << 16) | (green << 8) | red;
+        palette->colors[i] = (blue << 16) | (green << 8) | red;
         c++;
     }
     return palette;
 }
 
-// SLP
-uint8_t *slp_frame_to_bitmap(void *slp, slp_frame *frame) {
-    uint8_t *bitmap = malloc(frame->height * frame->width);
-    memset(bitmap, 0, frame->height * frame->width);
+void palette_free(Palette *palette) {
+    free(palette->colors);
+    free(palette);
+}
 
+// SLP
+void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *frame, int32_t x, int32_t y, Palette * palette) {
     uint32_t *command_table = (uint32_t *)((uint8_t *)slp + frame->command_table_offset);
     slp_outline_row *outline = (slp_outline_row *)((uint8_t *)slp + frame->outline_table_offset);
-    for (int32_t y = 0; y < frame->height; y++) {
+    for (int32_t ry = 0; ry < frame->height; ry++) {
         if (outline->left == 0x8000 && outline->right == 0x8000) {
             outline++;
             continue;
         }
 
-        uint8_t *c = (uint8_t *)slp + command_table[y];
+        uint8_t *c = (uint8_t *)slp + command_table[ry];
 
-        int32_t x = outline->left;
+        int32_t rx = outline->left;
         for (;;) {
             uint8_t opcode = *c++;
 
             // Lesser draw
             if ((opcode & 3) == 0) {
                 for (int32_t i = 0; i < opcode >> 2; i++) {
-                    bitmap[y * frame->width + x++] = *c++;
+                    framebuffer_draw_pixel(frambuffer, x + rx++, y + ry, palette->colors[*c++]);
                 }
                 continue;
             }
 
             // Lesser skip
             if ((opcode & 3) == 1) {
-                x += opcode >> 2;
+                rx += opcode >> 2;
                 continue;
             }
 
@@ -198,30 +210,30 @@ uint8_t *slp_frame_to_bitmap(void *slp, slp_frame *frame) {
             if ((opcode & 15) == 2) {
                 int32_t length = ((opcode & 0xf0) << 4) | *c++;
                 for (int32_t i = 0; i < length; i++) {
-                    bitmap[y * frame->width + x++] = *c++;
+                    framebuffer_draw_pixel(frambuffer, x + rx++, y + ry, palette->colors[*c++]);
                 }
                 continue;
             }
 
             // Greater skip
             if ((opcode & 15) == 3) {
-                x += ((opcode & 0xf0) << 4) | *c++;
+                rx += ((opcode & 0xf0) << 4) | *c++;
                 continue;
             }
 
             // Player color draw
             if ((opcode & 15) == 6) {
                 int32_t length = opcode >> 4 != 0 ? opcode >> 4 : *c++;
-                x += length;
+                rx += length;
                 continue;
             }
 
             // Fill
             if ((opcode & 15) == 7) {
                 int32_t length = opcode >> 4 != 0 ? opcode >> 4 : *c++;
-                uint8_t color = *c++;
+                uint8_t index = *c++;
                 for (int32_t i = 0; i < length; i++) {
-                    bitmap[y * frame->width + x++] = color;
+                    framebuffer_draw_pixel(frambuffer, x + rx++, y + ry, palette->colors[index]);
                 }
                 continue;
             }
@@ -229,14 +241,14 @@ uint8_t *slp_frame_to_bitmap(void *slp, slp_frame *frame) {
             // Fill player color
             if ((opcode & 15) == 10) {
                 int32_t length = opcode >> 4 != 0 ? opcode >> 4 : *c++;
-                x += length;
+                rx += length;
                 continue;
             }
 
             // Shadow draw
             if ((opcode & 15) == 11) {
                 int32_t length = opcode >> 4 != 0 ? opcode >> 4 : *c++;
-                x += length;
+                rx += length;
                 continue;
             }
 
@@ -253,9 +265,6 @@ uint8_t *slp_frame_to_bitmap(void *slp, slp_frame *frame) {
         }
         outline++;
     }
-    return bitmap;
 }
-
-#endif
 
 #endif

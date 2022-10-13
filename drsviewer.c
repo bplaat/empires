@@ -7,40 +7,8 @@
 #include <SDL.h>
 #define EMPIRES_DEFINE
 #include "empires.h"
-#define FONT_DEFINE
-#include "font.h"
-
-int32_t framebuffer_width = 1280;
-int32_t framebuffer_height = 720;
-
-static inline void draw_pixel(uint32_t *framebuffer, int32_t x, int32_t y, uint32_t color) {
-    if (x >= 0 && y >= 0 && x < framebuffer_width && y < framebuffer_height) {
-        framebuffer[y * framebuffer_width + x] = color;
-    }
-}
-
-void framebuffer_fill_rect(uint32_t *framebuffer, int32_t x, int32_t y, int32_t width, int32_t height, uint32_t color) {
-    for (int32_t ry = y; ry < y + height; ry++) {
-        for (int32_t rx = x; rx < x + width; rx++) {
-            draw_pixel(framebuffer, rx, ry, color);
-        }
-    }
-}
-
-void framebuffer_draw_text(uint32_t *framebuffer, int32_t x, int32_t y, char *string, size_t size, uint32_t color) {
-    for (size_t i = 0; i < size; i++) {
-        char c = string[i];
-        for (int32_t y2 = 0; y2 < 8; y2++) {
-            uint8_t line = font[(c << 3) | y2];
-            for (int32_t x2 = 0; x2 < 8; x2++) {
-                if ((line >> (7 - x2)) & 1) {
-                    draw_pixel(framebuffer, x + x2, y + y2, color);
-                }
-            }
-        }
-        x += 8;
-    }
-}
+#define FRAMEBUFFER_DEFINE
+#include "framebuffer.h"
 
 int main(int argc, char **argv) {
     char *root_path = "/Users/bplaat/Software/Age of Empires";
@@ -53,7 +21,7 @@ int main(int argc, char **argv) {
 
     // Palette
     char *palette_text = drs_read_file(interface_drs, DRS_TABLE_BIN, 50500, NULL);
-    uint32_t *palette = palette_parse(palette_text);
+    Palette *default_palette = palette_new_from_text(palette_text);
     free(palette_text);
 
     // Load DRS
@@ -65,23 +33,21 @@ int main(int argc, char **argv) {
 
     // Window
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+    SDL_Window *window = SDL_CreateWindow("DRS Viewer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_RESIZABLE);
+    Framebuffer *framebuffer = framebuffer_new(window);
 
-    SDL_Window *window = SDL_CreateWindow("DRS Viewer",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, framebuffer_width, framebuffer_height, SDL_WINDOW_RESIZABLE);
-
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    SDL_Texture *texture = SDL_CreateTexture(renderer,
-        SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, framebuffer_width, framebuffer_height);
-
-    bool running = false;
+    // State
     int32_t scroll_y = 0;
+    struct {
+        uint32_t extension;
+        int32_t id;
+        size_t size;
+        void *ptr;
+        int32_t frame;
+    } selected = {0};
 
-    uint32_t selected_ext;
-    int32_t selected_id;
-    size_t selected_size;
-    void *selected_data = NULL;
-    int32_t selected_frame;
-
+    // Event loop
+    bool running = false;
     while (!running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -93,15 +59,16 @@ int main(int argc, char **argv) {
                     for (int32_t j = 0; j < table->header.file_count; j++) {
                         drs_file *file = &table->files[j];
                         if (event.button.x < 300 && event.button.y >= y && event.button.y < y + 12) {
-                            selected_ext = table->header.extension;
-                            selected_id = file->id;
-                            selected_data = drs_read_file(drs, selected_ext, file->id, &selected_size);
+                            if (selected.ptr != NULL) free(selected.ptr);
 
-                            selected_frame = 0;
+                            selected.extension = table->header.extension;
+                            selected.id = file->id;
+                            selected.ptr = drs_read_file(drs, selected.extension, file->id, &selected.size);
+                            selected.frame = 0;
 
-                            if (selected_ext == DRS_TABLE_WAV) {
+                            if (selected.extension == DRS_TABLE_WAV) {
                                 FILE *f = fopen("tmp.wav", "wb");
-                                fwrite(selected_data, selected_size, 1, f);
+                                fwrite(selected.ptr, selected.size, 1, f);
                                 fclose(f);
 
                                 SDL_AudioSpec wavSpec;
@@ -123,12 +90,12 @@ int main(int argc, char **argv) {
                     y += 12;
                 }
 
-                if (event.button.x >= 300 && selected_ext == DRS_TABLE_SLP) {
-                    if (selected_ext == DRS_TABLE_SLP) {
-                        slp_header *slp = (slp_header *)selected_data;
-                        selected_frame++;
-                        if (selected_frame == slp->frame_count) {
-                            selected_frame = 0;
+                if (event.button.x >= 300 && selected.extension == DRS_TABLE_SLP) {
+                    if (selected.extension == DRS_TABLE_SLP) {
+                        slp_header *slp = (slp_header *)selected.ptr;
+                        selected.frame++;
+                        if (selected.frame == slp->frame_count) {
+                            selected.frame = 0;
                         }
                     }
                 }
@@ -136,11 +103,7 @@ int main(int argc, char **argv) {
             }
 
             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-                framebuffer_width = event.window.data1;
-                framebuffer_height = event.window.data2;
-                SDL_DestroyTexture(texture);
-                texture = SDL_CreateTexture(renderer,
-                    SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, framebuffer_width, framebuffer_height);
+                framebuffer_resize(framebuffer);
                 break;
             }
 
@@ -156,25 +119,20 @@ int main(int argc, char **argv) {
             }
         }
 
-        uint32_t *framebuffer;
-        int32_t pitch;
-        SDL_LockTexture(texture, NULL, (void **)&framebuffer, &pitch);
+        framebuffer_begin(framebuffer);
 
         // Draw background
-        for (int32_t y = 0; y < framebuffer_height; y++) {
-            for (int32_t x = 0; x < framebuffer_width; x++) {
-                framebuffer[y * framebuffer_width + x] = 0xffffff;
+        for (int32_t y = 0; y < framebuffer->height; y++) {
+            for (int32_t x = 0; x < framebuffer->width; x++) {
+                framebuffer_draw_pixel(framebuffer, x, y, 0xffffff);
             }
         }
 
         // Draw sidebar
-        framebuffer_fill_rect(framebuffer, 0, 0, 299, framebuffer_height, 0xeeeeee);
-        for (int32_t ry = 0; ry < framebuffer_height; ry++) {
-            framebuffer[ry * framebuffer_width + 299] = 0x000000;
-        }
+        framebuffer_fill_rect(framebuffer, 0, 0, 299, framebuffer->height, 0xeeeeee);
+        framebuffer_fill_rect(framebuffer, 299, 0, 1, framebuffer->height, 0x000000);
 
-        // Draw items
-        int32_t y = 8 - scroll_y;
+        int32_t sidebar_y = 8 - scroll_y;
         char line[256];
         for (int32_t i = 0; i < drs->header.table_count; i++) {
             DRSTable *table = &drs->tables[i];
@@ -185,52 +143,43 @@ int main(int argc, char **argv) {
             if (table->header.extension == DRS_TABLE_WAV) ext = "wav";
 
             sprintf(line, ".%s (%d files):", ext, table->header.file_count);
-            framebuffer_draw_text(framebuffer, 8, y, line, strlen(line), 0x000000);
-            y += 12;
+            framebuffer_draw_text(framebuffer, 8, sidebar_y, line, strlen(line), 0x000000);
+            sidebar_y += 12;
             for (int32_t j = 0; j < table->header.file_count; j++) {
                 drs_file *file = &table->files[j];
-                if (table->header.extension == selected_ext && file->id == selected_id) {
-                    framebuffer_fill_rect(framebuffer, 0, y, 300, 12, 0xcccccc);
+                if (table->header.extension == selected.extension && file->id == selected.id) {
+                    framebuffer_fill_rect(framebuffer, 0, sidebar_y, 300, 12, 0xcccccc);
                 }
                 sprintf(line, "%d.%s: %d bytes", file->id, ext, file->size);
-                framebuffer_draw_text(framebuffer, 8, y + 2, line, strlen(line), 0x000000);
-                y += 12;
+                framebuffer_draw_text(framebuffer, 8, sidebar_y + 2, line, strlen(line), 0x000000);
+                sidebar_y += 12;
             }
-            y += 12;
+            sidebar_y += 12;
         }
 
         // Draw selected item
-        if (selected_data != 0) {
-            if (selected_ext == DRS_TABLE_BIN) {
-                y = 8 - scroll_y;
-                char *c = selected_data;
-                while (c < (char *)selected_data + selected_size) {
+        if (selected.ptr != NULL) {
+            if (selected.extension == DRS_TABLE_BIN) {
+                int32_t text_y = 8 - scroll_y;
+                char *c = selected.ptr;
+                while (c < (char *)selected.ptr + selected.size) {
                     char *lineStart = c;
                     while (*c != '\r' && *c != '\n') c++;
-                    framebuffer_draw_text(framebuffer, 308, y, lineStart, c - lineStart, 0x000000);
+                    framebuffer_draw_text(framebuffer, 308, text_y, lineStart, c - lineStart, 0x000000);
                     if (*c == '\r') c++;
                     c++;
-                    y += 12;
+                    text_y += 12;
                 }
             }
-            else if (selected_ext == DRS_TABLE_SLP) {
-                slp_header *slp = (slp_header *)selected_data;
-                sprintf(line, "SLP Frame %d / %d", selected_frame + 1, slp->frame_count);
+            else if (selected.extension == DRS_TABLE_SLP) {
+                slp_header *slp = (slp_header *)selected.ptr;
+                sprintf(line, "SLP Frame %d / %d", selected.frame + 1, slp->frame_count);
                 framebuffer_draw_text(framebuffer, 308, 8, line, strlen(line),0x000000);
 
-                slp_frame *frame = (slp_frame *)((uint8_t *)selected_data + sizeof(slp_header) + selected_frame * (sizeof(slp_frame)));
-                uint8_t *bitmap = slp_frame_to_bitmap(selected_data, frame);
-                for (int32_t ry = 0; ry < frame->height; ry++) {
-                    for (int32_t rx = 0; rx < frame->width; rx++) {
-                        uint8_t color = bitmap[ry * frame->width + rx];
-                        if (color != 0) {
-                            draw_pixel(framebuffer, 300 + ((framebuffer_width - 300) - frame->width) / 2 + rx, (framebuffer_height - frame->height) / 2 + ry, palette[color]);
-                        }
-                    }
-                }
-                free(bitmap);
+                slp_frame *frame = (slp_frame *)((uint8_t *)selected.ptr + sizeof(slp_header) + selected.frame * (sizeof(slp_frame)));
+                framebuffer_draw_slp(framebuffer, (slp_header *)selected.ptr, frame, 300 + ((framebuffer->width - 300) - frame->width) / 2, (framebuffer->height - frame->height) / 2, default_palette);
             }
-            else if (selected_ext == DRS_TABLE_WAV) {
+            else if (selected.extension == DRS_TABLE_WAV) {
                 char *text = "You can hear the WAV sound playing!";
                 framebuffer_draw_text(framebuffer, 308, 8, text, strlen(text),0x000000);
             }
@@ -243,19 +192,15 @@ int main(int argc, char **argv) {
             framebuffer_draw_text(framebuffer, 308, 8, text, strlen(text), 0x000000);
         }
 
-        SDL_UnlockTexture(texture);
-
-        SDL_RenderClear(renderer);
-        SDL_RenderCopy(renderer, texture, NULL, NULL);
-        SDL_RenderPresent(renderer);
+        framebuffer_end(framebuffer);
+        framebuffer_present(framebuffer);
     }
 
     drs_free(drs);
-    free(palette);
+    palette_free(default_palette);
     drs_free(interface_drs);
 
-    SDL_DestroyTexture(texture);
-    SDL_DestroyRenderer(renderer);
+    framebuffer_free(framebuffer);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
