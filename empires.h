@@ -2,9 +2,10 @@
 #ifndef EMPIRES_HEADER
 #define EMPIRES_HEADER
 
-#include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+
 #include "framebuffer.h"
 
 // DRS
@@ -83,7 +84,8 @@ typedef struct slp_outline_row {
     uint16_t right;
 } slp_outline_row;
 
-void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *frame, int32_t rx, int32_t ry, Palette * palette);
+void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *frame, int32_t rx, int32_t ry,
+                          Palette *palette);
 
 #endif
 
@@ -177,7 +179,8 @@ void palette_free(Palette *palette) {
 }
 
 // SLP
-void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *frame, int32_t x, int32_t y, Palette * palette) {
+void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *frame, int32_t x, int32_t y,
+                          Palette *palette) {
     uint32_t *command_table = (uint32_t *)((uint8_t *)slp + frame->command_table_offset);
     slp_outline_row *outline = (slp_outline_row *)((uint8_t *)slp + frame->outline_table_offset);
     for (int32_t ry = 0; ry < frame->height; ry++) {

@@ -1,17 +1,22 @@
 // A cross-platform SDL2 application which you can use to explorer Age of Empires DRS container files
-// gcc -Wall -Wextra -Wshadow -Wpedantic --std=c11 drsviewer.c $(pkg-config --cflags --libs sdl2) -o drsviewer && ./drsviewer
+// gcc -Wall -Wextra -Wshadow -Wpedantic --std=c11 drsviewer.c $(pkg-config --cflags --libs sdl2) -o drsviewer &&
+// ./drsviewer
+#include <SDL.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <SDL.h>
 #define EMPIRES_DEFINE
 #include "empires.h"
 #define FRAMEBUFFER_DEFINE
 #include "framebuffer.h"
 
 int main(int argc, char **argv) {
+#ifdef _WIN32
+    char *root_path = "C:\\Program Files (x86)\\Microsoft Games\\Age of Empires";
+#else
     char *root_path = "/Users/bplaat/Software/Age of Empires";
+#endif
 
     // Interfac.drs
     char interface_path[255];
@@ -33,7 +38,8 @@ int main(int argc, char **argv) {
 
     // Window
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
-    SDL_Window *window = SDL_CreateWindow("DRS Viewer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_RESIZABLE);
+    SDL_Window *window =
+        SDL_CreateWindow("DRS Viewer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_RESIZABLE);
     Framebuffer *framebuffer = framebuffer_new(window);
 
     // State
@@ -173,28 +179,29 @@ int main(int argc, char **argv) {
                     int32_t columns = 16;
                     for (int32_t y = 0; y < (int32_t)palette->size / columns; y++) {
                         for (int32_t x = 0; x < columns; x++) {
-                            framebuffer_fill_rect(framebuffer, framebuffer->width - 8 - columns * 16 + x * 16, 8 + y * 16, 16, 16, palette->colors[y * columns + x]);
+                            framebuffer_fill_rect(framebuffer, framebuffer->width - 8 - columns * 16 + x * 16,
+                                                  8 + y * 16, 16, 16, palette->colors[y * columns + x]);
                         }
                     }
 
                     palette_free(palette);
                 }
-            }
-            else if (selected.extension == DRS_TABLE_SLP) {
+            } else if (selected.extension == DRS_TABLE_SLP) {
                 slp_header *slp = (slp_header *)selected.ptr;
                 sprintf(line, "SLP Frame %d / %d", selected.frame + 1, slp->frame_count);
-                framebuffer_draw_text(framebuffer, 308, 8, line, strlen(line),0x000000);
+                framebuffer_draw_text(framebuffer, 308, 8, line, strlen(line), 0x000000);
 
-                slp_frame *frame = (slp_frame *)((uint8_t *)selected.ptr + sizeof(slp_header) + selected.frame * (sizeof(slp_frame)));
-                framebuffer_draw_slp(framebuffer, (slp_header *)selected.ptr, frame, 300 + ((framebuffer->width - 300) - frame->width) / 2, (framebuffer->height - frame->height) / 2, default_palette);
-            }
-            else if (selected.extension == DRS_TABLE_WAV) {
+                slp_frame *frame =
+                    (slp_frame *)((uint8_t *)selected.ptr + sizeof(slp_header) + selected.frame * (sizeof(slp_frame)));
+                framebuffer_draw_slp(framebuffer, (slp_header *)selected.ptr, frame,
+                                     300 + ((framebuffer->width - 300) - frame->width) / 2,
+                                     (framebuffer->height - frame->height) / 2, default_palette);
+            } else if (selected.extension == DRS_TABLE_WAV) {
                 char *text = "You can hear the WAV sound playing!";
-                framebuffer_draw_text(framebuffer, 308, 8, text, strlen(text),0x000000);
-            }
-            else {
+                framebuffer_draw_text(framebuffer, 308, 8, text, strlen(text), 0x000000);
+            } else {
                 char *text = "Can't view this file type!";
-                framebuffer_draw_text(framebuffer, 308, 8, text, strlen(text),0x000000);
+                framebuffer_draw_text(framebuffer, 308, 8, text, strlen(text), 0x000000);
             }
         } else {
             char *text = "Open a file with the sidebar!";

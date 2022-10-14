@@ -1,10 +1,10 @@
 // An Age of Empires I demo thingy
 // gcc -Wall -Wextra -Wshadow -Wpedantic --std=c11 empires.c $(pkg-config --cflags --libs sdl2) -o empires && ./empires
+#include <SDL.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <SDL.h>
 #define EMPIRES_DEFINE
 #include "empires.h"
 #define FRAMEBUFFER_DEFINE
@@ -16,8 +16,14 @@ typedef struct Object {
     int32_t y;
 } Object;
 
-int main(void) {
+int main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+#ifdef _WIN32
+    char *root_path = "C:\\Program Files (x86)\\Microsoft Games\\Age of Empires";
+#else
     char *root_path = "/Users/bplaat/Software/Age of Empires";
+#endif
 
     // Interfac.drs
     char interface_path[255];
@@ -57,7 +63,8 @@ int main(void) {
 
     // Window
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Window *window = SDL_CreateWindow("Age of Empires", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_RESIZABLE);
+    SDL_Window *window = SDL_CreateWindow("Age of Empires", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720,
+                                          SDL_WINDOW_RESIZABLE);
     Framebuffer *framebuffer = framebuffer_new(window);
 
     // State
@@ -82,33 +89,13 @@ int main(void) {
     Object objects[100];
 
     // Buildings
-    objects[0] = (Object){
-        .id = 503,
-        .x = 5,
-        .y = 5
-    };
-    objects[1] = (Object){
-        .id = 19,
-        .x = 5,
-        .y = 1
-    };
-    objects[2] = (Object){
-        .id = 447,
-        .x = 12,
-        .y = 5
-    };
-    objects[3] = (Object){
-        .id = 117,
-        .x = 6,
-        .y = 10
-    };
+    objects[0] = (Object){.id = 503, .x = 5, .y = 5};
+    objects[1] = (Object){.id = 19, .x = 5, .y = 1};
+    objects[2] = (Object){.id = 447, .x = 12, .y = 5};
+    objects[3] = (Object){.id = 117, .x = 6, .y = 10};
 
     // Unit
-    objects[4] = (Object){
-        .id = 442,
-        .x = 15,
-        .y = 15
-    };
+    objects[4] = (Object){.id = 442, .x = 15, .y = 15};
 
     bool mouse_down = false;
 
@@ -162,16 +149,15 @@ int main(void) {
                 slp_frame *frame = (slp_frame *)((uint8_t *)slp + sizeof(slp_header));
 
                 framebuffer_draw_slp(framebuffer, slp, frame,
-                    start_x - terrain_hwidth + x * terrain_hwidth - y * terrain_hwidth,
-                    start_y + x * terrain_hheight + y * terrain_hheight,
-                    palette);
+                                     start_x - terrain_hwidth + x * terrain_hwidth - y * terrain_hwidth,
+                                     start_y + x * terrain_hheight + y * terrain_hheight, palette);
 
                 char line[256];
                 sprintf(line, "%dx%d", x, y);
-                    framebuffer_draw_text(framebuffer,
-                    start_x - terrain_hwidth / 2 + x * terrain_hwidth - y * terrain_hwidth,
-                    start_y + terrain_hheight + x * terrain_hheight + y * terrain_hheight,
-                    line, strlen(line), 0xffffff);
+                framebuffer_draw_text(framebuffer,
+                                      start_x - terrain_hwidth / 2 + x * terrain_hwidth - y * terrain_hwidth,
+                                      start_y + terrain_hheight + x * terrain_hheight + y * terrain_hheight, line,
+                                      strlen(line), 0xffffff);
             }
         }
 
@@ -180,8 +166,9 @@ int main(void) {
             Object *object = &objects[i];
             slp_header *slp = unit_slps[object->id];
             slp_frame *frame = (slp_frame *)((uint8_t *)slp + sizeof(slp_header));
-            framebuffer_draw_slp(framebuffer, slp, frame,
-                start_x - frame->center_x + object->x  * terrain_hwidth - object->y * terrain_hwidth,
+            framebuffer_draw_slp(
+                framebuffer, slp, frame,
+                start_x - frame->center_x + object->x * terrain_hwidth - object->y * terrain_hwidth,
                 start_y - frame->center_y + terrain_hheight + object->x * terrain_hheight + object->y * terrain_hheight,
                 palette);
         }
