@@ -1,10 +1,16 @@
 // An Age of Empires I demo thingy
+// clang-format off
 // gcc -Wall -Wextra -Wshadow -Wpedantic --std=c11 empires.c $(pkg-config --cflags --libs sdl2) -o empires && ./empires
+// clang-format on
 #include <SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #define EMPIRES_DEFINE
 #include "empires.h"
 #define FRAMEBUFFER_DEFINE
@@ -19,8 +25,15 @@ typedef struct Object {
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
+
+    // Find age of empires dir in Window registery
 #ifdef _WIN32
-    char *root_path = "C:\\Program Files (x86)\\Microsoft Games\\Age of Empires";
+    HKEY key;
+    RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Wow6432Node\\Microsoft\\Games\\Age of Empires\\1.00", 0, KEY_READ,
+                  &key);
+    char root_path[255];
+    DWORD root_path_size = sizeof(root_path);
+    RegQueryValueExA(key, "InstallationDirectory", NULL, NULL, (BYTE *)root_path, &root_path_size);
 #else
     char *root_path = "/Users/bplaat/Software/Age of Empires";
 #endif
@@ -48,6 +61,9 @@ int main(int argc, char **argv) {
     Palette *palette = palette_new_from_text(palette_text);
     free(palette_text);
 
+    // Load hud
+    slp_header *hud_slp = drs_read_file(interface_drs, DRS_TABLE_SLP, 50743, NULL);
+
     // Load terrain SLP's
     // 0 sand, 1 grass, 1 water, 2 deep water
     slp_header *terrain_slps[4];
@@ -63,13 +79,16 @@ int main(int argc, char **argv) {
 
     // Window
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Window *window = SDL_CreateWindow("Age of Empires", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720,
+    SDL_Window *window = SDL_CreateWindow("Age of Empires", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 768,
                                           SDL_WINDOW_RESIZABLE);
     Framebuffer *framebuffer = framebuffer_new(window);
 
     // State
+    srand(time(NULL));
+
     int32_t camera_x = 0;
     int32_t camera_y = 0;
+    bool mouse_down = false;
 
     int32_t map_width = 32;
     int32_t map_height = 32;
@@ -85,19 +104,22 @@ int main(int argc, char **argv) {
         map[i * map_width + 1] = 2;
     }
 
-    size_t objects_size = 5;
+    size_t objects_size = 0;
     Object objects[100];
 
     // Buildings
-    objects[0] = (Object){.id = 503, .x = 5, .y = 5};
-    objects[1] = (Object){.id = 19, .x = 5, .y = 1};
-    objects[2] = (Object){.id = 447, .x = 12, .y = 5};
-    objects[3] = (Object){.id = 117, .x = 6, .y = 10};
+    objects[objects_size++] = (Object){.id = 117, .x = 5, .y = 5};
+    objects[objects_size++] = (Object){.id = 19, .x = 5, .y = 1};
+    objects[objects_size++] = (Object){.id = 447, .x = 6, .y = 10};
+
+    for (int32_t ry = 0; ry < 8; ry++) {
+        for (int32_t rx = 0; rx < 8; rx++) {
+            objects[objects_size++] = (Object){.id = 503 + rand() % 4, .x = 12 + rx, .y = 5 + ry};
+        }
+    }
 
     // Unit
-    objects[4] = (Object){.id = 442, .x = 15, .y = 15};
-
-    bool mouse_down = false;
+    objects[objects_size++] = (Object){.id = 442, .x = 15, .y = 15};
 
     // Event loop
     bool running = false;
@@ -173,15 +195,26 @@ int main(int argc, char **argv) {
                 palette);
         }
 
+        // Draw hud
+        slp_frame *hud_top_frame = (slp_frame *)((uint8_t *)hud_slp + sizeof(slp_header));
+        framebuffer_draw_slp(framebuffer, hud_slp, hud_top_frame, (framebuffer->width - hud_top_frame->width) / 2, 0,
+                             palette);
+
+        slp_frame *hud_bottom_frame = (slp_frame *)((uint8_t *)hud_slp + sizeof(slp_header) + 1 * sizeof(slp_frame));
+        framebuffer_draw_slp(framebuffer, hud_slp, hud_bottom_frame, (framebuffer->width - hud_bottom_frame->width) / 2,
+                             framebuffer->height - hud_bottom_frame->height, palette);
+
         // Draw Info
         char info[256];
-        int32_t info_y = 8;
+        int32_t info_x = (framebuffer->width - hud_top_frame->width) / 2 + 8;
+        int32_t info_y = hud_top_frame->height + 8;
         sprintf(info, "Bassie Age of Empires Demo");
-        framebuffer_draw_text(framebuffer, 8, info_y, info, strlen(info), 0xffffff);
+        framebuffer_draw_text(framebuffer, info_x, info_y, info, strlen(info), 0xffffff);
         info_y += 12;
 
         sprintf(info, "Map size: %dx%d", map_width, map_height);
-        framebuffer_draw_text(framebuffer, 8, info_y, info, strlen(info), 0xffffff);
+        framebuffer_draw_text(framebuffer, info_x, info_y, info, strlen(info), 0xffffff);
+        info_y += 12;
 
         framebuffer_end(framebuffer);
         framebuffer_present(framebuffer);

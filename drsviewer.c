@@ -1,19 +1,35 @@
 // A cross-platform SDL2 application which you can use to explorer Age of Empires DRS container files
-// gcc -Wall -Wextra -Wshadow -Wpedantic --std=c11 drsviewer.c $(pkg-config --cflags --libs sdl2) -o drsviewer &&
-// ./drsviewer
+// clang-format off
+// gcc -Wall -Wextra -Wshadow -Wpedantic --std=c11 drsviewer.c $(pkg-config --cflags --libs sdl2) -o drsviewer && ./drsviewer
+// clang-format on
 #include <SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #define EMPIRES_DEFINE
 #include "empires.h"
 #define FRAMEBUFFER_DEFINE
 #include "framebuffer.h"
 
-int main(int argc, char **argv) {
 #ifdef _WIN32
-    char *root_path = "C:\\Program Files (x86)\\Microsoft Games\\Age of Empires";
+#define SCROLL_SENSITIVITY 24
+#else
+#define SCROLL_SENSITIVITY 8
+#endif
+
+int main(int argc, char **argv) {
+    // Find age of empires dir in Window registery
+#ifdef _WIN32
+    HKEY key;
+    RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Wow6432Node\\Microsoft\\Games\\Age of Empires\\1.00", 0, KEY_READ,
+                  &key);
+    char root_path[255];
+    DWORD root_path_size = sizeof(root_path);
+    RegQueryValueExA(key, "InstallationDirectory", NULL, NULL, (BYTE *)root_path, &root_path_size);
 #else
     char *root_path = "/Users/bplaat/Software/Age of Empires";
 #endif
@@ -114,7 +130,7 @@ int main(int argc, char **argv) {
             }
 
             if (event.type == SDL_MOUSEWHEEL) {
-                scroll_y -= event.wheel.y * 6;
+                scroll_y -= event.wheel.y * SCROLL_SENSITIVITY;
                 if (scroll_y < 0) scroll_y = 0;
                 break;
             }
@@ -164,9 +180,9 @@ int main(int argc, char **argv) {
             if (selected.extension == DRS_TABLE_BIN) {
                 int32_t text_y = 8 - scroll_y;
                 char *c = selected.ptr;
-                while (c < (char *)selected.ptr + selected.size) {
+                while (c < (char *)selected.ptr + selected.size && *c != '\0') {
                     char *lineStart = c;
-                    while (*c != '\r' && *c != '\n') c++;
+                    while (*c != '\r' && *c != '\n' && *c != '\0') c++;
                     framebuffer_draw_text(framebuffer, 308, text_y, lineStart, c - lineStart, 0x000000);
                     if (*c == '\r') c++;
                     c++;

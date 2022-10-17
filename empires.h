@@ -181,6 +181,8 @@ void palette_free(Palette *palette) {
 // SLP
 void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *frame, int32_t x, int32_t y,
                           Palette *palette) {
+    int32_t player_color_index = 1 << 4;
+
     uint32_t *command_table = (uint32_t *)((uint8_t *)slp + frame->command_table_offset);
     slp_outline_row *outline = (slp_outline_row *)((uint8_t *)slp + frame->outline_table_offset);
     for (int32_t ry = 0; ry < frame->height; ry++) {
@@ -195,7 +197,7 @@ void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *f
         for (;;) {
             uint8_t opcode = *c++;
 
-            // Lesser draw
+            // Lesser block copy
             if ((opcode & 3) == 0) {
                 for (int32_t i = 0; i < opcode >> 2; i++) {
                     framebuffer_draw_pixel(frambuffer, x + rx++, y + ry, palette->colors[*c++]);
@@ -209,7 +211,7 @@ void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *f
                 continue;
             }
 
-            // Greater draw
+            // Greater block copy
             if ((opcode & 15) == 2) {
                 int32_t length = ((opcode & 0xf0) << 4) | *c++;
                 for (int32_t i = 0; i < length; i++) {
@@ -224,14 +226,16 @@ void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *f
                 continue;
             }
 
-            // Player color draw
+            // Copy and transform block
             if ((opcode & 15) == 6) {
                 int32_t length = opcode >> 4 != 0 ? opcode >> 4 : *c++;
-                rx += length;
+                for (int32_t i = 0; i < length; i++) {
+                    framebuffer_draw_pixel(frambuffer, x + rx++, y + ry, palette->colors[*c++ | player_color_index]);
+                }
                 continue;
             }
 
-            // Fill
+            // Fill color
             if ((opcode & 15) == 7) {
                 int32_t length = opcode >> 4 != 0 ? opcode >> 4 : *c++;
                 uint8_t index = *c++;
@@ -241,10 +245,13 @@ void framebuffer_draw_slp(Framebuffer *frambuffer, slp_header *slp, slp_frame *f
                 continue;
             }
 
-            // Fill player color
+            // Transform block
             if ((opcode & 15) == 10) {
                 int32_t length = opcode >> 4 != 0 ? opcode >> 4 : *c++;
-                rx += length;
+                uint8_t index = *c++;
+                for (int32_t i = 0; i < length; i++) {
+                    framebuffer_draw_pixel(frambuffer, x + rx++, y + ry, palette->colors[index | player_color_index]);
+                }
                 continue;
             }
 
