@@ -7,7 +7,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -15,6 +14,8 @@
 #include "empires.h"
 #define FRAMEBUFFER_DEFINE
 #include "framebuffer.h"
+#define PERLIN_DEFINE
+#include "perlin.h"
 
 typedef struct Object {
     int32_t id;
@@ -83,43 +84,44 @@ int main(int argc, char **argv) {
                                           SDL_WINDOW_RESIZABLE);
     Framebuffer *framebuffer = framebuffer_new(window);
 
-    // State
-    srand(time(NULL));
-
+    // Camera state
     int32_t camera_x = 0;
     int32_t camera_y = 0;
     bool mouse_down = false;
 
-    int32_t map_width = 32;
-    int32_t map_height = 32;
+    // Map generation
+    int32_t map_width = 64;
+    int32_t map_height = 64;
     uint8_t map[map_height * map_width];
-    memset(map, 0, map_height * map_width);
-    for (int32_t i = 0; i < 10; i++) {
-        map[2 + i] = 1;
-    }
-    for (int32_t i = 0; i < map_width; i++) {
-        map[i * map_width + 0] = 3;
-    }
-    for (int32_t i = 0; i < map_width; i++) {
-        map[i * map_width + 1] = 2;
-    }
 
     size_t objects_size = 0;
-    Object objects[100];
+    Object objects[1024];
 
-    // Buildings
-    objects[objects_size++] = (Object){.id = 117, .x = 5, .y = 5};
-    objects[objects_size++] = (Object){.id = 19, .x = 5, .y = 1};
-    objects[objects_size++] = (Object){.id = 447, .x = 6, .y = 10};
+    srand(1);
+    perlin_init(rand());
 
-    for (int32_t ry = 0; ry < 8; ry++) {
-        for (int32_t rx = 0; rx < 8; rx++) {
-            objects[objects_size++] = (Object){.id = 503 + rand() % 4, .x = 12 + rx, .y = 5 + ry};
+    for (int32_t y = 0; y < map_height; y++) {
+        for (int32_t x = 0; x < map_width; x++) {
+            double n = perlin_noise((double)x / 50.0, (double)y / 50.0, 0);
+
+            if (n > 0) map[y * map_width + x] = 1;
+            else if (n > -0.25) map[y * map_width + x] = 0;
+            else if (n > -0.5) map[y * map_width + x] = 2;
+            else map[y * map_width + x] = 3;
+
+            if (n > 0.3 && rand() % 2 == 1) {
+                objects[objects_size++] = (Object){.id = 503 + rand() % 4, .x = x, .y = y};
+            }
         }
     }
 
+    // Buildings
+    objects[objects_size++] = (Object){.id = 19, .x = 2, .y = 1};
+    objects[objects_size++] = (Object){.id = 117, .x = 5, .y = 5};
+    objects[objects_size++] = (Object){.id = 447, .x = 6, .y = 10};
+
     // Unit
-    objects[objects_size++] = (Object){.id = 442, .x = 15, .y = 15};
+    objects[objects_size++] = (Object){.id = 442, .x = 12, .y = 13};
 
     // Event loop
     bool running = false;
@@ -174,12 +176,12 @@ int main(int argc, char **argv) {
                                      start_x - terrain_hwidth + x * terrain_hwidth - y * terrain_hwidth,
                                      start_y + x * terrain_hheight + y * terrain_hheight, palette);
 
-                char line[256];
-                sprintf(line, "%dx%d", x, y);
-                framebuffer_draw_text(framebuffer,
-                                      start_x - terrain_hwidth / 2 + x * terrain_hwidth - y * terrain_hwidth,
-                                      start_y + terrain_hheight + x * terrain_hheight + y * terrain_hheight, line,
-                                      strlen(line), 0xffffff);
+                // char line[256];
+                // sprintf(line, "%dx%d", x, y);
+                // framebuffer_draw_text(framebuffer,
+                //                       start_x - terrain_hwidth / 2 + x * terrain_hwidth - y * terrain_hwidth,
+                //                       start_y + terrain_hheight + x * terrain_hheight + y * terrain_hheight, line,
+                //                       strlen(line), 0xffffff);
             }
         }
 
