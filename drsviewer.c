@@ -54,8 +54,10 @@ int main(int argc, char **argv) {
 
     // Window
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+    char window_title[512];
+    sprintf(window_title, "%s - DRS Viewer", drs_path);
     SDL_Window *window =
-        SDL_CreateWindow("DRS Viewer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_RESIZABLE);
+        SDL_CreateWindow(window_title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_RESIZABLE);
     Framebuffer *framebuffer = framebuffer_new(window);
 
     // State

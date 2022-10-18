@@ -110,7 +110,11 @@ int main(int argc, char **argv) {
     size_t units_size = 0;
     Unit units[1024];
 
+#ifdef _WIN32
     srand(1);
+#else
+    srand(343412);
+#endif
     perlin_init(rand());
 
     for (int32_t y = 0; y < map_height; y++) {
@@ -138,9 +142,9 @@ int main(int argc, char **argv) {
     units[units_size++] = (Unit){.id = 447, .x = 6, .y = 10};
 
     // Unit
-    units[units_size++] = (Unit){.id = 442, .x = 12, .y = 13};
-    units[units_size++] = (Unit){.id = 443, .x = 12.5, .y = 13.2};
-    units[units_size++] = (Unit){.id = 421, .x = 10, .y = 13.2};
+    units[units_size++] = (Unit){.id = 442, .x = 11.5, .y = 11};
+    units[units_size++] = (Unit){.id = 443, .x = 11, .y = 13};
+    units[units_size++] = (Unit){.id = 421, .x = 8, .y = 13.5};
 
     // Event loop
     bool running = false;
@@ -193,13 +197,13 @@ int main(int argc, char **argv) {
 
                 slp_header *slp;
                 slp_frame *frame;
-                if (map[y * map_width + (x - 1)] >> 8 == 0 && map[y * map_width + x] >> 8 == 1) {
-                    slp = border_slps[1];
-                    frame = (slp_frame *)((uint8_t *)slp + sizeof(slp_header) + 2 * sizeof(slp_frame));
-                } else {
+                // if (map[y * map_width + (x - 1)] >> 8 == 0 && map[y * map_width + x] >> 8 == 1) {
+                //     slp = border_slps[1];
+                //     frame = (slp_frame *)((uint8_t *)slp + sizeof(slp_header) + 2 * sizeof(slp_frame));
+                // } else {
                     slp = terrain_slps[terrain_type];
                     frame = (slp_frame *)((uint8_t *)slp + sizeof(slp_header) + terrain_version * sizeof(slp_frame));
-                }
+                // }
 
                 framebuffer_draw_slp(framebuffer, slp, frame,
                                      start_x - terrain_hwidth + x * terrain_hwidth - y * terrain_hwidth,
