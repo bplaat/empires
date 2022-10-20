@@ -23,7 +23,10 @@ typedef struct drs_header {
 #define DRS_TABLE_WAV 0x77617620
 
 typedef struct drs_table {
-    uint32_t extension;
+    union {
+        char string[4];
+        uint32_t integer;
+    } extension;
     int32_t offset;
     int32_t file_count;
 } drs_table;
@@ -123,7 +126,7 @@ DRS *drs_new_from_file(char *path) {
 void *drs_read_file(DRS *drs, uint32_t type, int32_t id, size_t *size) {
     for (int32_t i = 0; i < drs->header.table_count; i++) {
         DRSTable *table = &drs->tables[i];
-        if (table->header.extension == type) {
+        if (table->header.extension.integer == type) {
             for (int32_t j = 0; j < table->header.file_count; j++) {
                 drs_file *file = &table->files[j];
                 if (file->id == id) {

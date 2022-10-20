@@ -5,6 +5,7 @@
 #include <SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef _WIN32
@@ -20,6 +21,15 @@
 #else
 #define SCROLL_SENSITIVITY 8
 #endif
+
+bool isAsciiFile(char *text, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        if (!(text[i] == '\t' || text[i] == '\n' || text[i] == '\r' || (text[i] >= ' ' && text[i] <= '~'))) {
+            return false;
+        }
+    }
+    return true;
+}
 
 int main(int argc, char **argv) {
     // Find age of empires dir in Window registery
@@ -85,7 +95,7 @@ int main(int argc, char **argv) {
                         if (event.button.x < 300 && event.button.y >= y && event.button.y < y + 12) {
                             if (selected.ptr != NULL) free(selected.ptr);
 
-                            selected.extension = table->header.extension;
+                            selected.extension = table->header.extension.integer;
                             selected.id = file->id;
                             selected.ptr = drs_read_file(drs, selected.extension, file->id, &selected.size);
                             selected.frame = 0;
@@ -156,21 +166,27 @@ int main(int argc, char **argv) {
         char line[256];
         for (int32_t i = 0; i < drs->header.table_count; i++) {
             DRSTable *table = &drs->tables[i];
-            char *ext;
-            if (table->header.extension == DRS_TABLE_BIN) ext = "bin";
-            if (table->header.extension == DRS_TABLE_SHP) ext = "shp";
-            if (table->header.extension == DRS_TABLE_SLP) ext = "slp";
-            if (table->header.extension == DRS_TABLE_WAV) ext = "wav";
+            char tableExtension[5];
+            if (table->header.extension.integer == DRS_TABLE_BIN) {
+                strcpy(tableExtension, "bin");
+            } else {
+                int32_t j = 0;
+                while (j < 4 && table->header.extension.string[3 - j] != ' ') {
+                    tableExtension[j] = table->header.extension.string[3 - j];
+                    j++;
+                }
+                tableExtension[j] = '\0';
+            }
 
-            sprintf(line, ".%s (%d files):", ext, table->header.file_count);
+            sprintf(line, ".%s (%d files):", tableExtension, table->header.file_count);
             framebuffer_draw_text(framebuffer, 8, sidebar_y, line, strlen(line), 0x000000);
             sidebar_y += 12;
             for (int32_t j = 0; j < table->header.file_count; j++) {
                 drs_file *file = &table->files[j];
-                if (table->header.extension == selected.extension && file->id == selected.id) {
+                if (table->header.extension.integer == selected.extension && file->id == selected.id) {
                     framebuffer_fill_rect(framebuffer, 0, sidebar_y, 300, 12, 0xcccccc);
                 }
-                sprintf(line, "%d.%s: %d bytes", file->id, ext, file->size);
+                sprintf(line, "%d.%s: %d bytes", file->id, tableExtension, file->size);
                 framebuffer_draw_text(framebuffer, 8, sidebar_y + 2, line, strlen(line), 0x000000);
                 sidebar_y += 12;
             }
@@ -179,7 +195,7 @@ int main(int argc, char **argv) {
 
         // Draw selected item
         if (selected.ptr != NULL) {
-            if (selected.extension == DRS_TABLE_BIN) {
+            if (selected.extension == DRS_TABLE_BIN || isAsciiFile(selected.ptr, selected.size)) {
                 int32_t text_y = 8 - scroll_y;
                 char *c = selected.ptr;
                 while (c < (char *)selected.ptr + selected.size && *c != '\0') {
